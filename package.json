@@ -1,0 +1,29 @@
+{
+  "name": "anna-apps",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Monorepo of first-party Anna Apps (Finder, …). Each app lives in apps/<slug>/ and ships a bundle + executa(s).",
+  "packageManager": "pnpm@9.12.0",
+  "scripts": {
+    "dev": "node scripts/dev_all.mjs",
+    "validate": "pnpm -r validate",
+    "test": "pnpm -r test",
+    "doctor": "anna-app doctor",
+    "preset:publish:local": "python scripts/publish_preset_registry_local.py",
+    "preset:publish:local:all": "python scripts/publish_local_all.py",
+    "preset:build:local": "python scripts/publish_preset_registry_local.py --dry-run --output-dir dist/registry-local"
+  },
+  "devDependencies": {
+    "@anna-ai/cli": "^0.1.19"
+  },
+  "pnpm": {
+    "overrides": {
+      "@anna-ai/app-runtime": "^0.5.0",
+      "@anna-ai/app-schema": "^0.8.0"
+    }
+  },
+  "engines": {
+    "node": ">=20.10.0",
+    "pnpm": ">=9"
+  }
+}

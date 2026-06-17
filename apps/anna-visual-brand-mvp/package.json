@@ -1,0 +1,25 @@
+{
+  "name": "@anna-apps/anna-visual-brand-mvp",
+  "private": true,
+  "version": "1.0.0",
+  "description": "AnnaVisual Brand MVP demo with a static UI bundle and a local Executa tool.",
+  "scripts": {
+    "dev": "node scripts/anna-app-with-uv-path.mjs dev",
+    "doctor": "node scripts/anna-app-with-uv-path.mjs doctor",
+    "validate": "anna-app validate --strict",
+    "test:tool": "python3 tests/test_tool_contract.py",
+    "test:prd": "python3 tests/test_prd_static.py",
+    "save:draft": "python3 scripts/save-style-draft-to-desktop-test.py",
+    "test": "pnpm test:tool && pnpm test:prd",
+    "check": "pnpm validate && pnpm test && pnpm exec anna-app fixture verify fixtures/happy-path.jsonl"
+  },
+  "devDependencies": {
+    "@anna-ai/app-runtime": "^0.5.0",
+    "@anna-ai/app-schema": "^0.8.0",
+    "@anna-ai/cli": "^0.1.19"
+  },
+  "overrides": {
+    "@anna-ai/app-schema": "^0.8.0",
+    "@anna-ai/app-runtime": "^0.5.0"
+  }
+}

@@ -1,0 +1,16 @@
+{
+  "name": "@anna-apps/finder",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Finder — Anna App that browses and manages on-disk data of every Anna App under ~/.anna/.",
+  "scripts": {
+    "dev": "anna-app dev",
+    "validate": "anna-app validate --strict",
+    "fixture:verify": "anna-app fixture verify fixtures/*.jsonl",
+    "fixture:summarize": "anna-app fixture summarize fixtures/happy-path.jsonl",
+    "test": "echo '(no JS tests for finder yet)'"
+  },
+  "devDependencies": {
+    "@anna-ai/cli": "^0.1.9"
+  }
+}

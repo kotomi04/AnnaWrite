@@ -1,0 +1,14 @@
+{"type":"meta","version":1,"app_slug":"finder","tool_id":"tool-anna-finder","note":"Happy-path harness recording: open Finder (app scope), see notes prefix, list keys, read one, edit, save, delete."}
+{"type":"event","ts":0.001,"channel":"window","name":"ready","payload":{}}
+{"type":"rpc","ts":0.020,"direction":"app->host","method":"tools.invoke","params":{"tool_id":"tool-anna-finder","method":"aps","args":{"action":"stats","scope":"app","prefix":""}}}
+{"type":"rpc","ts":0.030,"direction":"host->app","method":"tools.invoke","result":{"success":true,"data":{"scope":"app","prefix":"","total_keys":2,"total_size":48,"last_updated":"2025-05-12T07:00:00+00:00","buckets":[{"name":"notes","size":48,"count":2}]}}}
+{"type":"rpc","ts":0.050,"direction":"app->host","method":"storage.list","params":{"prefix":"notes/","limit":200}}
+{"type":"rpc","ts":0.060,"direction":"host->app","method":"storage.list","result":{"items":[{"key":"notes/2025-05-01","etag":"W/\"1-aaa\"","size_bytes":24,"metadata":null,"tags":null,"updated_at":"2025-05-12T07:00:00+00:00"},{"key":"notes/2025-05-02","etag":"W/\"1-bbb\"","size_bytes":24,"metadata":null,"tags":null,"updated_at":"2025-05-12T07:00:00+00:00"}],"next_cursor":null}}
+{"type":"rpc","ts":0.080,"direction":"app->host","method":"storage.get","params":{"key":"notes/2025-05-01"}}
+{"type":"rpc","ts":0.090,"direction":"host->app","method":"storage.get","result":{"value":{"text":"hello"},"etag":"W/\"1-aaa\"","generation":1,"exists":true}}
+{"type":"rpc","ts":0.110,"direction":"app->host","method":"storage.set","params":{"key":"notes/2025-05-01","value":{"text":"hello world"},"if_match":"W/\"1-aaa\""}}
+{"type":"rpc","ts":0.120,"direction":"host->app","method":"storage.set","result":{"etag":"W/\"2-ccc\"","generation":2,"size_bytes":30}}
+{"type":"rpc","ts":0.140,"direction":"app->host","method":"storage.delete","params":{"key":"notes/2025-05-02","if_match":"W/\"1-bbb\""}}
+{"type":"rpc","ts":0.150,"direction":"host->app","method":"storage.delete","result":{"deleted":true}}
+{"type":"rpc","ts":0.170,"direction":"app->host","method":"chat.write_message","params":{"role":"user","content":"Looking at APS entry app:notes/2025-05-01 (30 B). What does this represent and is anything safe to clean up?"}}
+{"type":"rpc","ts":0.175,"direction":"host->app","method":"chat.write_message","result":{"ok":true}}

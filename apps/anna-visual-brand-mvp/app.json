@@ -1,0 +1,15 @@
+{
+  "slug": "anna-visual-brand-mvp",
+  "version": "1.0.0",
+  "name": "AnnaVisual Brand MVP",
+  "tagline": "Save Brands, create Brand-bound Designers, generate prompt packages, and call Anna image generation.",
+  "description": "AnnaVisual Brand MVP validates a reusable Brand + Designer workflow: upload source references, save an editable Brand, create Designers from that Brand, generate compact image prompt packages, and call Anna host image generation/editing when granted. Packages include Brand hard rules, Designer creative direction, source visual evidence, attachment guidance, and optional style draft instructions. Logo and mascot stay fixed overlay assets rather than model-generated objects.",
+  "category": "design",
+  "logo_url": "https://staging.anna.partners/favicon.ico",
+  "cover_url": "https://staging.anna.partners/favicon.ico",
+  "screenshots": [],
+  "homepage_url": "https://staging.anna.partners/developer",
+  "support_url": "https://staging.anna.partners/developer",
+  "privacy_url": "https://staging.anna.partners/developer",
+  "pricing_model": "free"
+}

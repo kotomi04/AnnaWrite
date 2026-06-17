@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Finder</title>
+    <link rel="icon" type="image/svg+xml" href="icon.svg" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body data-theme="light" data-pane="apps">
+    <main class="shell">
+      <!-- ───── Sidebar: scopes + prefix buckets ───── -->
+      <aside class="sidebar" id="sidebar">
+        <header class="sidebar__head">
+          <div class="brand">
+            <img src="icon.svg" class="brand__logo" alt="" width="22" height="22" />
+            <span class="brand__name">Finder</span>
+          </div>
+          <button class="iconbtn" id="theme-toggle" type="button" aria-label="Toggle theme" title="Toggle theme">
+            <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/>
+            </svg>
+            <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="12" cy="12" r="4"/>
+              <path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>
+            </svg>
+          </button>
+        </header>
+
+        <div class="sidebar__section">
+          <div class="sidebar__label">Scope</div>
+          <div class="scope-switch" role="tablist" aria-label="APS scope">
+            <button type="button" class="scope-btn is-active" data-scope="app"  role="tab">App</button>
+            <button type="button" class="scope-btn"           data-scope="user" role="tab">User</button>
+            <button type="button" class="scope-btn"           data-scope="tool" role="tab">Tool</button>
+          </div>
+        </div>
+
+        <div class="sidebar__section sidebar__section--scroll">
+          <div class="sidebar__label">Prefixes</div>
+          <ul class="apps" id="apps-list" aria-live="polite">
+            <li class="apps__empty">Loading…</li>
+          </ul>
+        </div>
+
+        <footer class="sidebar__foot">
+          <div class="totals" id="totals-line">— · 0 keys</div>
+          <div class="conn">
+            <span id="conn-status" class="dot dot--off" title="Disconnected"></span>
+            <span class="muted">Anna App · v1.2.0</span>
+          </div>
+        </footer>
+      </aside>
+
+      <!-- ───── Main pane: breadcrumbs + entries + actions ───── -->
+      <section class="content">
+        <header class="content__head">
+          <button class="iconbtn back-btn" id="back-btn" type="button" aria-label="Back" title="Back">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <polyline points="15 6 9 12 15 18"/>
+            </svg>
+          </button>
+          <nav class="crumbs" id="crumbs" aria-label="Path"></nav>
+          <div class="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <circle cx="11" cy="11" r="7"/>
+              <path d="m20 20-3-3"/>
+            </svg>
+            <input id="filter-input" type="search" placeholder="Filter keys here" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="head-actions">
+            <button class="btn btn--ghost" id="refresh-btn" type="button" title="Refresh (R)">Refresh</button>
+            <button class="btn btn--ghost" id="new-key-btn" type="button" title="New entry">New entry</button>
+            <button class="btn btn--ghost" id="curator-btn" type="button" title="Ask Finder Curator">Ask coach</button>
+          </div>
+        </header>
+
+        <div class="content__body">
+          <div class="entries-wrap">
+            <table class="entries" id="entries-table">
+              <thead>
+                <tr>
+                  <th class="col-name">Key</th>
+                  <th class="col-kind">Kind</th>
+                  <th class="col-size">Size</th>
+                  <th class="col-mtime">Updated</th>
+                </tr>
+              </thead>
+              <tbody id="entries-body">
+                <tr class="entries__empty"><td colspan="4">Pick a prefix on the left to begin.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- ───── Slide-up entry viewer / editor ───── -->
+    <aside class="preview" id="preview" aria-hidden="true">
+      <header class="preview__head">
+        <div class="preview__meta">
+          <div class="preview__title" id="preview-title">—</div>
+          <div class="preview__sub muted" id="preview-sub">—</div>
+        </div>
+        <div class="preview__actions">
+          <button class="btn btn--ghost" id="export-btn" type="button" title="Download as JSON">Export</button>
+          <button class="btn btn--ghost" id="edit-btn"   type="button" title="Edit JSON">Edit</button>
+          <button class="btn btn--primary" id="save-btn" type="button" title="Save changes" hidden>Save</button>
+          <button class="btn btn--ghost" id="cancel-btn" type="button" title="Cancel edits" hidden>Cancel</button>
+          <button class="btn btn--danger" id="delete-btn" type="button" title="Delete entry">Delete</button>
+          <button class="iconbtn" id="preview-close" type="button" aria-label="Close" title="Close">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M6 6l12 12M18 6L6 18"/>
+            </svg>
+          </button>
+        </div>
+      </header>
+      <div class="preview__body" id="preview-body">
+        <div class="muted">Select an entry to preview.</div>
+      </div>
+    </aside>
+
+    <!-- ───── Generic modal (prompt / confirm replacement) ─────
+         Sandbox-safe in-app dialog used in lieu of window.prompt/confirm,
+         which no-op when iframe sandbox lacks `allow-modals` (e.g. the
+         anna-app dev harness). See app.js → appPrompt() / appConfirm(). -->
+    <div class="modal" id="modal" aria-hidden="true">
+      <div class="modal__backdrop" data-modal-dismiss></div>
+      <div class="modal__dialog" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+        <header class="modal__head">
+          <h3 class="modal__title" id="modal-title">—</h3>
+        </header>
+        <div class="modal__body" id="modal-body"></div>
+        <footer class="modal__foot">
+          <button class="btn btn--ghost"   id="modal-cancel" type="button">Cancel</button>
+          <button class="btn btn--primary" id="modal-ok"     type="button">OK</button>
+        </footer>
+      </div>
+    </div>
+
+    <!-- ───── Toast / status line ───── -->
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+    <!-- Anna App Runtime SDK is loaded as an ES module via `import` in
+         app.js (best practice). `latest` is a stable alias served by the
+         host that always points at the SDK version shipped with this
+         Anna runtime. When running outside Anna app.js falls back to a
+         stub. -->
+    <script src="app.js" type="module"></script>
+  </body>
+</html>

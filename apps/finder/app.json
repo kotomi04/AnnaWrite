@@ -1,0 +1,18 @@
+{
+  "slug": "finder",
+  "version": "0.0.1",
+  "name": "Finder",
+  "tagline": "Browse, preview and curate every entry your Anna apps store in APS.",
+  "description": "Finder is a calm, native-feeling browser for Anna Persistent Storage (APS) — the per-user, per-app key/value store every Anna App writes to. Whatever your apps persist (notes, sessions, bookmarks, drafts, settings) shows up here as a navigable tree you can search, preview, edit, and clean up without leaving Anna.\n\n**What's inside**\n\n- A two-pane window: scope/prefix tree on the left, key list with breadcrumbs on the right, and a slide-up viewer for any entry's JSON value (with etag-aware editing).\n- `acme.anna_finder` — Executa stdio tool that wraps the APS reverse-RPC surface (`storage.list / get / set / delete`) with one method (`aps`) and a small `stats` aggregator for per-prefix size/count.\n- `acme.finder_curator` — declarative SKILL.md that lets Anna answer questions like \"how big is the notes prefix?\" or \"clean up the drafts older than a week\" by calling the same tool.\n\n**How to use**\n\nMention Finder in any chat (`#finder`), or open the window from the App Library. Switch scopes (app / user / tool), drill into a prefix, click a key to preview & edit its JSON, or delete with optimistic-concurrency safety. The host pins APS scope to your account so Finder never sees another user's data.",
+  "category": "utilities",
+  "logo_url": "https://anna.partners/apps/finder/logo.png",
+  "cover_url": "https://anna.partners/apps/finder/cover.png",
+  "screenshots": [
+    "https://anna.partners/apps/finder/shot-1.png",
+    "https://anna.partners/apps/finder/shot-2.png"
+  ],
+  "homepage_url": "https://anna.partners/apps/finder",
+  "support_url": "https://anna.partners/apps/finder/support",
+  "privacy_url": "https://anna.partners/apps/finder/privacy",
+  "pricing_model": "free"
+}

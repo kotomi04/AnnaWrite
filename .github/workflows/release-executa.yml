@@ -1,0 +1,450 @@
+# ============================================================
+# Release any Anna executa → R2 (anna-preset-apps)
+# ============================================================
+# Generic per-tool release pipeline. Builds a single-file PyInstaller
+# binary for each supported OS/arch, packages it as ``.tar.gz`` (or
+# ``.zip`` on Windows), and uploads the assets + their ``.sha256``
+# sidecars to the Cloudflare R2 bucket that matrix-nexus' Agent
+# fetches from at install time.
+#
+# One workflow serves every executa under
+# ``apps/*/executas/*/`` that declares
+# ``[tool.anna.executa].binary_urls`` in its pyproject.toml — no new
+# YAML per tool, just push a tag.
+#
+# Trigger matrix:
+#   push tag tool-<tool_id_suffix>-v<semver>
+#                                 → upload to ``production/`` (the URL
+#                                   path baked into pyproject.toml's
+#                                   ``[tool.anna.executa].binary_urls``).
+#                                   The full ``tool_id`` MUST equal
+#                                   ``tool-<suffix>`` and match the
+#                                   ``[project].name`` of exactly one
+#                                   executa under ``apps/``.
+#   workflow_dispatch             → operator picks tool_id + version +
+#                                   ``staging`` or ``production`` (for
+#                                   re-publishes / dry-runs / staging
+#                                   rehearsals).
+#
+# Examples:
+#   git tag tool-anna-finder-v1.2.0 && git push --tags
+#   git tag tool-anna-notes-v0.3.1  && git push --tags
+#
+# R2 layout (matches pyproject.toml URLs):
+#   s3://anna-preset-apps/<env>/executas/<tool_id>/<version>/<platform>.<ext>
+#   s3://anna-preset-apps/<env>/executas/<tool_id>/<version>/<platform>.<ext>.sha256
+# Exposed publicly via the ``bin.anna.partners`` custom domain:
+#   https://bin.anna.partners/<env>/executas/<tool_id>/<version>/<platform>.<ext>
+#
+# Secrets required (configure in GitHub repo / environment) — mirror
+# matrix-nexus' .env naming. Values should be a dedicated write-only R2
+# API token scoped to the ``anna-preset-apps`` bucket (do NOT reuse
+# nexus' read-only token):
+#   R2_ACCOUNT_ID         — Cloudflare R2 account id
+#   R2_ACCESS_KEY_ID      — write-only key id
+#   R2_SECRET_ACCESS_KEY  — write-only secret
+# ============================================================
+
+name: Release executa
+
+on:
+  push:
+    tags:
+      - "tool-*-v*"
+  workflow_dispatch:
+    inputs:
+      tool_id:
+        description: "Executa tool_id (must equal [project].name in pyproject.toml, e.g. tool-anna-finder)."
+        type: string
+        required: true
+      version:
+        description: "Version to publish (e.g. 1.2.0)."
+        type: string
+        required: true
+      target_env:
+        description: "Which R2 prefix to upload to."
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize per (tool_id, env, version) so the per-platform jobs of
+  # two concurrent publishes can't interleave object writes under the
+  # same R2 key prefix.
+  group: >-
+    release-executa-${{
+      github.event_name == 'push' && github.ref_name
+      || format('{0}-v{1}-{2}', inputs.tool_id, inputs.version, inputs.target_env)
+    }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  # ────────────────────────────────────────────────────────────
+  # Preflight: derive (tool_id, version, target_env, executa_dir,
+  # entrypoint_module) once and validate inputs so the 5-way matrix
+  # doesn't burn ~5min on a bad request.
+  # ────────────────────────────────────────────────────────────
+  preflight:
+    runs-on: ubuntu-latest
+    outputs:
+      tool_id: ${{ steps.derive.outputs.tool_id }}
+      version: ${{ steps.derive.outputs.version }}
+      target_env: ${{ steps.derive.outputs.target_env }}
+      executa_dir: ${{ steps.locate.outputs.executa_dir }}
+      entrypoint_module: ${{ steps.locate.outputs.entrypoint_module }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: derive
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+          IN_TOOL_ID: ${{ inputs.tool_id }}
+          IN_VERSION: ${{ inputs.version }}
+          IN_TARGET_ENV: ${{ inputs.target_env }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT_NAME" = "push" ]; then
+            tag="$REF_NAME"
+            # tag = tool-<suffix>-v<semver>; suffix may contain dashes.
+            if [[ ! "$tag" =~ ^(tool-.+)-v([0-9]+\.[0-9]+\.[0-9]+([.-].+)?)$ ]]; then
+              echo "::error::tag '$tag' must match 'tool-<suffix>-v<semver>'"
+              exit 1
+            fi
+            tool_id="${BASH_REMATCH[1]}"
+            version="${BASH_REMATCH[2]}"
+            target_env="production"
+          else
+            tool_id="$IN_TOOL_ID"
+            version="$IN_VERSION"
+            target_env="$IN_TARGET_ENV"
+            if [[ ! "$tool_id" =~ ^tool-[a-z0-9][a-z0-9-]*$ ]]; then
+              echo "::error::tool_id '$tool_id' must match 'tool-<kebab>'"
+              exit 1
+            fi
+            if [[ ! "$version" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-].+)?$ ]]; then
+              echo "::error::version '$version' must be semver"
+              exit 1
+            fi
+          fi
+          echo "tool_id=$tool_id" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "target_env=$target_env" >> "$GITHUB_OUTPUT"
+          echo "✅ publishing $tool_id v$version → $target_env"
+
+      # Locate the executa by walking apps/*/executas/*/pyproject.toml
+      # and matching [project].name == tool_id. This decouples directory
+      # naming from tool_id and tolerates re-orgs.
+      - id: locate
+        env:
+          TOOL_ID: ${{ steps.derive.outputs.tool_id }}
+          VERSION: ${{ steps.derive.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import os
+          import sys
+          import tomllib
+          from pathlib import Path
+
+          tool_id = os.environ["TOOL_ID"]
+          want_version = os.environ["VERSION"]
+          matches: list[tuple[Path, dict]] = []
+          for pp in sorted(Path("apps").glob("*/executas/*/pyproject.toml")):
+              try:
+                  data = tomllib.loads(pp.read_text("utf-8"))
+              except Exception as exc:
+                  print(f"::warning::failed to parse {pp}: {exc}")
+                  continue
+              if data.get("project", {}).get("name") == tool_id:
+                  matches.append((pp, data))
+
+          if not matches:
+              print(f"::error::no executa under apps/*/executas/* has [project].name == '{tool_id}'")
+              sys.exit(1)
+          if len(matches) > 1:
+              paths = ", ".join(str(p) for p, _ in matches)
+              print(f"::error::multiple executas claim tool_id '{tool_id}': {paths}")
+              sys.exit(1)
+
+          pp, data = matches[0]
+          executa_dir = pp.parent
+          declared_version = data["project"].get("version")
+          if declared_version != want_version:
+              print(
+                  f"::error::version mismatch — pyproject.toml of {tool_id} declares "
+                  f"'{declared_version}' but release wants '{want_version}'. Bump "
+                  f"[project].version (and binary_urls) and retag."
+              )
+              sys.exit(1)
+
+          scripts = data.get("project", {}).get("scripts", {})
+          ep = scripts.get(tool_id)
+          if not ep or ":" not in ep:
+              print(
+                  f"::error::pyproject.toml of {tool_id} must declare "
+                  f"[project.scripts] '{tool_id}' = '<module>:<func>'"
+              )
+              sys.exit(1)
+          entrypoint_module = ep.split(":", 1)[0]
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as fh:
+              fh.write(f"executa_dir={executa_dir}\n")
+              fh.write(f"entrypoint_module={entrypoint_module}\n")
+          print(f"✅ located {tool_id} at {executa_dir} (entrypoint: {entrypoint_module})")
+          PY
+
+  # ────────────────────────────────────────────────────────────
+  # Build + upload one platform per job. Each job is self-contained
+  # so a transient runner failure only retries that platform.
+  # ────────────────────────────────────────────────────────────
+  build:
+    needs: preflight
+    name: ${{ needs.preflight.outputs.tool_id }} / ${{ matrix.platform }}
+    environment: ${{ needs.preflight.outputs.target_env }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14         # Apple Silicon (M-series)
+            platform: darwin-arm64
+            arch: arm64
+            archive: tar.gz
+            py_arch: ""
+            run_arch: ""
+          # Intel build via Rosetta 2 on an Apple-Silicon runner. The
+          # native ``macos-13`` Intel runner is being retired by GitHub
+          # and now has multi-hour queue waits; cross-building on
+          # ``macos-15`` with ``arch -x86_64`` mirrors what ``matrix``
+          # does (see matrix/.github/workflows/build-release.yml) and
+          # keeps this matrix dispatching in seconds.
+          - os: macos-15
+            platform: darwin-x86_64
+            arch: x86_64
+            archive: tar.gz
+            py_arch: x64
+            run_arch: "arch -x86_64"
+          - os: ubuntu-latest    # x86_64
+            platform: linux-x86_64
+            archive: tar.gz
+          - os: ubuntu-24.04-arm # aarch64 native runner
+            platform: linux-aarch64
+            archive: tar.gz
+          - os: windows-latest
+            platform: windows-x86_64
+            archive: zip
+            ext: .exe
+
+    runs-on: ${{ matrix.os }}
+
+    env:
+      TOOL_ID: ${{ needs.preflight.outputs.tool_id }}
+      VERSION: ${{ needs.preflight.outputs.version }}
+      TARGET_ENV: ${{ needs.preflight.outputs.target_env }}
+      EXECUTA_DIR: ${{ needs.preflight.outputs.executa_dir }}
+      ENTRYPOINT_MODULE: ${{ needs.preflight.outputs.entrypoint_module }}
+
+    defaults:
+      run:
+        # NOTE: ``shell: bash`` MUST be repeated here. GitHub Actions
+        # replaces the workflow-level ``defaults.run`` wholesale when a
+        # job redeclares it (no per-key merge), so without this the
+        # Windows runner falls back to ``pwsh`` and chokes on bash
+        # line-continuations (``pyinstaller \``) with
+        # ``ParserError: Missing expression after unary operator '--'``.
+        shell: bash
+        working-directory: ${{ needs.preflight.outputs.executa_dir }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          architecture: ${{ matrix.py_arch || '' }}
+          cache: pip
+          cache-dependency-path: ${{ needs.preflight.outputs.executa_dir }}/pyproject.toml
+
+      # ----------------------------------------------------------------
+      # Set up build environment.
+      #
+      # For the darwin-x86_64 job we run on an Apple-Silicon runner and
+      # cross-build via Rosetta 2 (mirrors ``matrix``'s
+      # build-release.yml > build-macos-app job). We MUST:
+      #   1. create the venv under ``arch -x86_64`` so its sysconfig /
+      #      ``platform.machine()`` report x86_64;
+      #   2. install deps with the venv's x86_64 pip so wheels resolve
+      #      to ``…_x86_64.whl`` and any from-source C extensions get
+      #      ``ARCHFLAGS=-arch x86_64`` (otherwise clang defaults to the
+      #      arm64 host and ships a wrong-arch .so inside the onefile);
+      #   3. export ``RUN_ARCH`` so subsequent steps (pyinstaller,
+      #      smoke-test) keep running in x86_64 mode.
+      # Other platforms install into the setup-python interpreter
+      # directly — ``RUN_ARCH=""`` is a no-op prefix.
+      # ----------------------------------------------------------------
+      - name: Set up build environment
+        env:
+          MATRIX_ARCH: ${{ matrix.arch || '' }}
+          RUN_ARCH_PREFIX: ${{ matrix.run_arch }}
+        run: |
+          set -euo pipefail
+          if [ -n "$RUN_ARCH_PREFIX" ]; then
+            echo "🏗️ Cross-build via Rosetta 2 ($RUN_ARCH_PREFIX)"
+            PYTHON_PATH="$(which python3)"
+            $RUN_ARCH_PREFIX "$PYTHON_PATH" -m venv .venv --clear
+            $RUN_ARCH_PREFIX .venv/bin/pip install --upgrade pip setuptools wheel
+            $RUN_ARCH_PREFIX .venv/bin/pip install .
+            $RUN_ARCH_PREFIX .venv/bin/pip install pyinstaller
+            echo "VIRTUAL_ENV=$PWD/.venv" >> "$GITHUB_ENV"
+            echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+            echo "ARCHFLAGS=-arch ${MATRIX_ARCH:-x86_64}" >> "$GITHUB_ENV"
+          else
+            echo "🏗️ Native build"
+            python -m pip install --upgrade pip
+            pip install .
+            pip install pyinstaller
+          fi
+
+      # Verify the interpreter/PyInstaller will actually run in the
+      # intended architecture before we spend minutes building. matrix
+      # does the equivalent ``platform.machine()`` assertion.
+      - name: Verify build architecture (cross-build only)
+        if: matrix.run_arch != ''
+        env:
+          RUN_ARCH_PREFIX: ${{ matrix.run_arch }}
+          EXPECTED_ARCH: ${{ matrix.platform == 'darwin-x86_64' && 'x86_64' || '' }}
+        run: |
+          set -euo pipefail
+          actual=$($RUN_ARCH_PREFIX python -c "import platform; print(platform.machine())")
+          echo "interpreter arch: $actual (expected: $EXPECTED_ARCH)"
+          if [ "$actual" != "$EXPECTED_ARCH" ]; then
+            echo "::error::architecture mismatch — got '$actual', expected '$EXPECTED_ARCH'"
+            exit 1
+          fi
+
+      - name: Build single-file binary (PyInstaller)
+        run: |
+          ${{ matrix.run_arch }} pyinstaller \
+            --onefile \
+            --name "${TOOL_ID}${{ matrix.ext }}" \
+            --clean \
+            --noupx \
+            "${ENTRYPOINT_MODULE}.py"
+
+      - name: Smoke-test describe
+        if: matrix.platform != 'linux-aarch64'  # native run only on x86 runners
+        env:
+          ASSERT_TOOL_ID: ${{ env.TOOL_ID }}
+          # Force UTF-8 on Python's stdio so the assertion print() below
+          # doesn't blow up on Windows runners, where the default code
+          # page is cp1252 and emitting any non-ASCII character (e.g.
+          # ``✅``) raises ``UnicodeEncodeError: 'charmap' codec can't
+          # encode character '\u2705'``. PEP 540 / PYTHONUTF8=1 makes
+          # the interpreter use UTF-8 for stdin/stdout/stderr regardless
+          # of the active code page.
+          PYTHONUTF8: "1"
+          PYTHONIOENCODING: "utf-8"
+        run: |
+          echo '{"jsonrpc":"2.0","id":1,"method":"describe"}' \
+            | "./dist/${TOOL_ID}${{ matrix.ext }}" \
+            | python -c "import sys, json, os; d = json.load(sys.stdin); want = os.environ['ASSERT_TOOL_ID']; assert d['result']['name'] == want, d; print('describe OK')"
+
+      # Asset name on R2 is flat ``<platform>.<archive>`` under the
+      # ``<tool_id>/<version>/`` key prefix. Locally we still tar the
+      # ``<tool_id>`` binary so the archive contents are stable.
+      - name: Package archive
+        id: pkg
+        run: |
+          set -euo pipefail
+          cd dist
+          ASSET="${{ matrix.platform }}.${{ matrix.archive }}"
+          if [[ "${{ matrix.archive }}" == "zip" ]]; then
+            7z a "$ASSET" "${TOOL_ID}${{ matrix.ext }}"
+          else
+            tar czf "$ASSET" "${TOOL_ID}"
+          fi
+          # Compute the SHA-256 sidecar in pure Python — ``shasum`` is
+          # absent on GitHub's Windows runners (git-bash ships
+          # ``sha256sum`` only, and even that isn't on PATH for every
+          # image), while macOS lacks ``sha256sum``. Python is
+          # guaranteed by the earlier setup-python step on every
+          # platform. Output format matches ``shasum -a 256`` /
+          # ``sha256sum``: ``<hex>  <filename>\n``.
+          python -c "import hashlib, sys, pathlib; p = pathlib.Path(sys.argv[1]); sys.stdout.write(hashlib.sha256(p.read_bytes()).hexdigest() + '  ' + p.name + '\n')" "$ASSET" | tee "$ASSET.sha256"
+          echo "asset=$ASSET" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact (audit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.TOOL_ID }}-${{ matrix.platform }}-${{ env.VERSION }}
+          path: |
+            ${{ needs.preflight.outputs.executa_dir }}/dist/${{ steps.pkg.outputs.asset }}
+            ${{ needs.preflight.outputs.executa_dir }}/dist/${{ steps.pkg.outputs.asset }}.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Configure AWS CLI for R2
+        # NOTE: do NOT use ``aws-actions/configure-aws-credentials`` here.
+        # That action calls STS (``sts.<region>.amazonaws.com``) to validate
+        # the creds; with ``aws-region: auto`` (required for R2) it resolves
+        # to ``sts.auto.amazonaws.com`` — a non-existent host — and the job
+        # dies with ``getaddrinfo ENOTFOUND sts.auto.amazonaws.com``.
+        # The R2 creds aren't AWS creds anyway, so STS would reject them.
+        # Mirror ``publish-preset-registry.yml`` and just export env vars;
+        # ``AWS_ENDPOINT_URL`` on the upload step points the CLI at R2.
+        run: echo "R2 credentials are exported as env vars on the upload step."
+
+      # Upload tarball + sha256 sidecar to R2. Objects under
+      # ``<tool_id>/<version>/`` are treated as immutable — once a version
+      # is published it MUST NOT be overwritten with different bytes
+      # (matrix Agent caches by URL). To re-cut a release, bump the
+      # version in ``[project].version`` + ``binary_urls``.
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_DEFAULT_REGION: auto
+          BUCKET: anna-preset-apps
+          ASSET: ${{ steps.pkg.outputs.asset }}
+        run: |
+          set -euo pipefail
+          KEY_PREFIX="${TARGET_ENV}/executas/${TOOL_ID}/${VERSION}"
+
+          echo "::group::Upload ${ASSET}"
+          aws s3 cp "dist/${ASSET}" \
+            "s3://${BUCKET}/${KEY_PREFIX}/${ASSET}" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "application/octet-stream" \
+            --only-show-errors
+          echo "::endgroup::"
+
+          echo "::group::Upload ${ASSET}.sha256"
+          aws s3 cp "dist/${ASSET}.sha256" \
+            "s3://${BUCKET}/${KEY_PREFIX}/${ASSET}.sha256" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --content-type "text/plain" \
+            --only-show-errors
+          echo "::endgroup::"
+
+          echo "✅ https://bin.anna.partners/${KEY_PREFIX}/${ASSET}"
+
+      - name: Job summary
+        env:
+          ASSET: ${{ steps.pkg.outputs.asset }}
+        run: |
+          {
+            echo "### ${TOOL_ID} / ${{ matrix.platform }} published"
+            echo ""
+            echo "- tool_id: \`${TOOL_ID}\`"
+            echo "- version: \`${VERSION}\`"
+            echo "- env: \`${TARGET_ENV}\`"
+            echo "- url: \`https://bin.anna.partners/${TARGET_ENV}/executas/${TOOL_ID}/${VERSION}/${ASSET}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,35 @@
+{
+  "name": "@anna-apps/anna-write-mvp",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "tsc && vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "dev:anna": "pnpm build && anna-app dev",
+    "validate": "pnpm build && anna-app validate --strict",
+    "validate:anna": "pnpm validate",
+    "test": "echo '(no automated tests for AnnaWrite MVP yet)'"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "docx": "^9.7.1",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.468.0",
+    "mammoth": "^1.12.0",
+    "pdfjs-dist": "^4.10.38",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "vite": "^5.4.11"
+  },
+  "devDependencies": {
+    "@anna-ai/cli": "^0.1.17",
+    "@types/react": "^19.2.15",
+    "@types/react-dom": "^19.2.3",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.49",
+    "tailwindcss": "^3.4.17",
+    "typescript": "^5.6.3"
+  }
+}

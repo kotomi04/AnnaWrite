@@ -1,0 +1,7 @@
+{
+  "$schema": "anna-app-identity/v1",
+  "host": "https://staging.anna.partners",
+  "app_id": 125,
+  "slug": "anna-write-mvp",
+  "first_published_at": "2026-06-16T09:52:20.869Z"
+}

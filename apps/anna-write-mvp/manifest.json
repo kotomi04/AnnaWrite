@@ -1,0 +1,77 @@
+{
+  "schema": 2,
+  "permissions": [
+    "llm.complete",
+    "chat.write_message",
+    "storage.read",
+    "storage.write"
+  ],
+  "required_executas": [],
+  "optional_executas": [],
+  "system_prompt_addendum": "The user has AnnaWrite open. AnnaWrite calls anna.llm.complete from the app iframe for author analysis, requirement generation, draft writing, selected text rewriting, whole-draft refinement, and title generation.",
+  "user_message_prefix_template": "[AnnaWrite] {user_message}",
+  "tags": [
+    "writing",
+    "author-style",
+    "drafting",
+    "llm",
+    "anna-app"
+  ],
+  "ui": {
+    "bundle": {
+      "format": "static-spa",
+      "entry": "index.html",
+      "external_origins": []
+    },
+    "views": [
+      {
+        "name": "main",
+        "title": "AnnaWrite",
+        "default": true,
+        "entry": "index.html",
+        "min_size": {
+          "w": 560,
+          "h": 620
+        },
+        "default_size": {
+          "w": 1180,
+          "h": 800
+        },
+        "max_size": {
+          "w": 1600,
+          "h": 1100
+        },
+        "resizable": true,
+        "movable": true,
+        "single_instance": true
+      }
+    ],
+    "host_api": {
+      "llm": [
+        "complete"
+      ],
+      "chat": [
+        "write_message"
+      ],
+      "storage": [
+        "get",
+        "set",
+        "delete",
+        "list"
+      ],
+      "window": [
+        "set_title"
+      ],
+      "tools": [],
+      "artifact": [],
+      "fs": [],
+      "prefs": []
+    },
+    "state_merge": "last_writer_wins"
+  },
+  "dev": {
+    "fixtures": [],
+    "seed_storage": {},
+    "user_id": 1
+  }
+}

@@ -1,0 +1,16 @@
+[project]
+name = "tool-qinghuasun-annavisual-brand-mvp-j6sdhjxy"
+version = "1.1.0"
+description = "AnnaVisual Brand MVP — guided brand visual creation with visual_manual JSON."
+requires-python = ">=3.10"
+dependencies = []
+
+[project.scripts]
+tool-qinghuasun-annavisual-brand-mvp-j6sdhjxy = "brand_mvp_plugin:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["brand_mvp_plugin"]

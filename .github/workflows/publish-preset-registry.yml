@@ -1,0 +1,180 @@
+# ============================================================
+# Publish Preset Apps Registry → R2 (anna-preset-apps)
+# ============================================================
+# Builds a per-environment registry from ``apps/<slug>/`` and uploads
+# tarballs + ``registry.json`` to the private R2 bucket consumed by
+# matrix-nexus' init Step 5.3.5.
+#
+# Trigger matrix:
+#   workflow_dispatch    → operator chooses env (manual only)
+#
+# NOTE: Automatic triggers (push to main / release published) were removed
+# intentionally — preset-registry publishes are now operator-gated to avoid
+# clobbering staging/production on every merge or tag.
+#
+# Design: matrix-nexus/docs/design/preset-apps-remote-registry.md (§5).
+# Secrets required (configure in GitHub repo / environment) — names mirror
+# matrix-nexus' .env for consistency, but the **values** must be a dedicated
+# write-only R2 API token scoped to the ``anna-preset-apps`` bucket only
+# (do NOT reuse nexus' read-only token):
+#   R2_ACCOUNT_ID            — Cloudflare R2 account id (endpoint is derived
+#                              as https://<id>.r2.cloudflarestorage.com)
+#   R2_ACCESS_KEY_ID         — write-only key id for anna-preset-apps
+#   R2_SECRET_ACCESS_KEY     — write-only secret for anna-preset-apps
+# ============================================================
+
+name: Publish Preset Apps Registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_env:
+        description: "Which registry to publish"
+        type: choice
+        options: [staging, production]
+        default: staging
+
+permissions:
+  contents: read
+
+concurrency:
+  # Serialize publishes per-env so tar uploads always precede the matching
+  # registry.json overwrite (see "Upload to R2" step below).
+  group: publish-preset-${{ github.event_name == 'release' && 'production' || (inputs.target_env || 'staging') }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'release' && 'production' || (inputs.target_env || 'staging') }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Decide target env
+        id: env
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "env=production" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "env=${{ inputs.target_env }}" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "env=staging" >> "$GITHUB_OUTPUT"
+            echo "ref=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      # pnpm version is pinned via root package.json#packageManager
+      # (pnpm@9.12.0). Do NOT also set `with: version:` here — action-setup
+      # rejects conflicting declarations (ERR_PNPM_BAD_PM_VERSION).
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      # 1. Reuse anna-app-cli to validate every preset app's manifest +
+      #    ui-section + tool-id linter. Fails the workflow if any app is bad,
+      #    so we never publish a registry that nexus would later refuse.
+      - name: Validate all preset apps (anna-app validate --strict)
+        run: pnpm -r --filter "./apps/*" validate
+
+      # 2. Build tarballs + registry.json under dist/registry/.
+      - name: Build registry payload
+        run: |
+          python scripts/build_preset_registry.py \
+            --apps-dir apps \
+            --env "${{ steps.env.outputs.env }}" \
+            --source-sha "${{ github.sha }}" \
+            --source-ref "${{ steps.env.outputs.ref }}" \
+            --source-repo "github.com/${{ github.repository }}" \
+            --output-dir dist/registry
+
+      # 3. Standalone schema check (mirrors matrix-nexus' _parse_registry).
+      - name: Validate registry.json schema
+        run: |
+          python scripts/validate_preset_registry.py \
+            dist/registry/registry.json \
+            --expect-env "${{ steps.env.outputs.env }}"
+
+      # 3b. Gate: every first-party executa referenced via the canonical
+      #     ``https://bin.anna.partners/<env>/executas/...`` URL pattern in
+      #     ``apps/*/executas/*/pyproject.toml`` MUST already exist on R2.
+      #     Otherwise matrix Agent's first install of the related Anna App
+      #     would 404 and surface as "Plugin not found".
+      #
+      #     Fix when this fails: tag the missing executa (e.g. push
+      #     ``tool-anna-finder-v<X.Y.Z>``) and let release-executa.yml
+      #     finish uploading before retrying this workflow.
+      - name: Gate — verify executa binaries on R2
+        env:
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        run: |
+          python -m pip install --quiet boto3
+          python scripts/check_executa_assets.py --sidecar
+
+      - name: Upload build artifact (always, for audit)
+        uses: actions/upload-artifact@v4
+        with:
+          name: preset-registry-${{ steps.env.outputs.env }}-${{ github.run_id }}
+          path: dist/registry/
+          retention-days: 30
+
+      # 4. Upload to R2.
+      #    Order matters: tarballs first, then registry.json — so nexus never
+      #    reads a registry whose tar_key points to a not-yet-uploaded object.
+      - name: Upload to R2
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_ENDPOINT_URL: https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          AWS_DEFAULT_REGION: auto
+          TARGET_ENV: ${{ steps.env.outputs.env }}
+        run: |
+          set -euo pipefail
+          BUCKET="anna-preset-apps"
+
+          echo "::group::Sync tarballs (immutable, long-cache)"
+          aws s3 sync dist/registry/ "s3://${BUCKET}/${TARGET_ENV}/" \
+            --exclude "registry.json" \
+            --cache-control "public, max-age=31536000, immutable" \
+            --only-show-errors
+          echo "::endgroup::"
+
+          echo "::group::Publish registry.json (short-cache)"
+          aws s3 cp dist/registry/registry.json \
+            "s3://${BUCKET}/${TARGET_ENV}/registry.json" \
+            --cache-control "max-age=60, must-revalidate" \
+            --content-type "application/json" \
+            --only-show-errors
+          echo "::endgroup::"
+
+          echo "::group::Archive timestamped copy"
+          TS=$(date -u +%Y%m%dT%H%M%SZ)
+          aws s3 cp dist/registry/registry.json \
+            "s3://${BUCKET}/${TARGET_ENV}/_history/registry.${TS}.json" \
+            --content-type "application/json" \
+            --only-show-errors
+          echo "uploaded snapshot: _history/registry.${TS}.json"
+          echo "::endgroup::"
+
+      - name: Summary
+        run: |
+          echo "### Preset registry published" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- env: \`${{ steps.env.outputs.env }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- source_sha: \`${{ github.sha }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- source_ref: \`${{ steps.env.outputs.ref }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Nexus will pick up the new registry on its next \`run_all_init\` (restart or admin resync)." >> "$GITHUB_STEP_SUMMARY"

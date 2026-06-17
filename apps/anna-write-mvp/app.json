@@ -1,0 +1,15 @@
+{
+  "slug": "anna-write-mvp",
+  "name": "AnnaWrite",
+  "tagline": "Reusable author profiles, requirement-first drafting, targeted rewrites, and publish export.",
+  "description": "AnnaWrite is a writing workspace for creating reusable Author profiles from samples, generating detailed writing requirements, drafting with selected author context, revising selected sentences without changing the rest of the draft, and exporting publish-ready text.",
+  "category": "productivity",
+  "logo_url": "https://staging.anna.partners/favicon.ico",
+  "cover_url": "https://staging.anna.partners/favicon.ico",
+  "screenshots": [],
+  "homepage_url": "https://staging.anna.partners/developer",
+  "support_url": "https://staging.anna.partners/developer",
+  "privacy_url": "https://staging.anna.partners/developer",
+  "pricing_model": "free",
+  "version": "0.1.0"
+}

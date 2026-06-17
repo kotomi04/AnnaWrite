@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AnnaVisual Brand MVP</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div class="desk d1"></div>
+  <div class="desk d2"></div>
+
+  <section class="shell" id="shell">
+    <header class="topbar">
+      <div class="brand-lock">
+        <div class="dots" aria-hidden="true">
+          <span class="dot red"></span>
+          <span class="dot yellow"></span>
+          <span class="dot green"></span>
+        </div>
+        <div class="app-icon"></div>
+        <div>
+          <strong>AnnaVisual</strong>
+          <span id="runtimeStatus">Connecting...</span>
+        </div>
+      </div>
+      <nav class="top-actions" aria-label="Primary">
+        <button class="ghost active" id="imageNav">Image</button>
+        <button class="ghost" id="brandNav">Brand</button>
+        <button class="ghost" id="designerNav">Designer</button>
+        <button class="minbtn" id="minimizeBtn" aria-label="Minimize">-</button>
+      </nav>
+    </header>
+
+    <main id="page"></main>
+    <div class="toast-stack" id="toasts"></div>
+  </section>
+
+  <script type="module">
+    import { AnnaAppRuntime } from "/static/anna-apps/_sdk/latest/index.js";
+    window.AnnaAppRuntime = AnnaAppRuntime;
+    await import("./app.js");
+  </script>
+</body>
+</html>

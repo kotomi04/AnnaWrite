@@ -1,0 +1,6 @@
+{
+  "tool_id": "tool-qinghuasun-annavisual-brand-mvp-j6sdhjxy",
+  "type": "python",
+  "enabled": true,
+  "_comment": "AnnaVisual Brand MVP executa — Python uv-based plugin with JSON-RPC over stdio"
+}

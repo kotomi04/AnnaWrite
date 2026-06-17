@@ -1,0 +1,77 @@
+# NOTE: ``name`` and the ``[project.scripts]`` key MUST equal the
+# first-party reserved tool_id (``tool-anna-finder``). The matrix-nexus
+# first-party Executa seeder owns this ID and rejects user-minted IDs in
+# the ``tool-anna-*`` namespace, so do NOT replace it.
+# Update this file together with anna_finder_plugin.py:MANIFEST["name"],
+# manifest.json (required_executas + ui.host_api.tools), and bundle/app.js
+# (TOOL_ID).
+[project]
+name = "tool-anna-finder"
+version = "1.2.0"
+description = "Anna Finder — sandboxed file browser tool for the Finder Anna App"
+requires-python = ">=3.10"
+authors = [{ name = "Anna Apps" }]
+license = { text = "MIT" }
+dependencies = [
+    "boto3>=1.43.10",
+    "pyinstaller>=6.20.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "anna-executa-test>=0.1.0",
+]
+
+[project.scripts]
+"tool-anna-finder" = "anna_finder_plugin:main"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+py-modules = ["anna_finder_plugin"]
+
+# ---------------------------------------------------------------------------
+# Anna first-party Executa metadata.
+#
+# Read by matrix-nexus's ``first_party_executas_seeder``. Anything declared
+# here OVERRIDES the seeder's defaults for this row.
+#
+# We ship anna-finder as a **prebuilt single-file binary** rather than a uv
+# package. This lets the matrix Agent install on machines without Python at
+# all and keeps cold-start under a few hundred ms.
+#
+# Distribution: Cloudflare R2 (bucket ``anna-preset-apps``, public-read via
+#   the ``bin.anna.partners`` custom domain). Layout mirrors the preset-apps
+#   registry:
+#     s3://anna-preset-apps/<env>/executas/<tool_id>/<version>/<platform>.<ext>
+#   exposed publicly as:
+#     https://bin.anna.partners/<env>/executas/<tool_id>/<version>/<platform>.<ext>
+#
+# Release pipeline:  .github/workflows/release-anna-finder.yml
+# Trigger:           push a tag of the form ``<tool_id>-vX.Y.Z`` where
+#                    ``<tool_id>`` is ``tool-anna-finder`` (e.g. ``...-v1.3.0``)
+# Asset naming:      <platform>.tar.gz   (.zip on Windows) — flat under the
+#                    tool_id/version/ key prefix on R2.
+# Platforms covered: darwin-arm64, darwin-x86_64, linux-x86_64,
+#                    linux-aarch64, windows-x86_64
+#
+# ⚠️  When bumping ``[project].version`` above, ALSO update every URL in
+#    ``[tool.anna.executa].binary_urls`` so the seeder hands the Agent the
+#    matching version. Mismatched versions will cause silent rollback to the
+#    older binary on every fresh install.
+# ---------------------------------------------------------------------------
+[tool.anna.executa]
+distribution = "binary"
+category = "tool"
+category_name = "Anna App"
+category_icon = "🍎"
+
+[tool.anna.executa.binary_urls]
+"darwin-arm64"   = "https://bin.anna.partners/production/executas/tool-anna-finder/1.2.0/darwin-arm64.tar.gz"
+"darwin-x86_64"  = "https://bin.anna.partners/production/executas/tool-anna-finder/1.2.0/darwin-x86_64.tar.gz"
+"linux-x86_64"   = "https://bin.anna.partners/production/executas/tool-anna-finder/1.2.0/linux-x86_64.tar.gz"
+"linux-aarch64"  = "https://bin.anna.partners/production/executas/tool-anna-finder/1.2.0/linux-aarch64.tar.gz"
+"windows-x86_64" = "https://bin.anna.partners/production/executas/tool-anna-finder/1.2.0/windows-x86_64.zip"

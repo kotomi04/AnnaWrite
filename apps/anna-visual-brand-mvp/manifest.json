@@ -1,0 +1,131 @@
+{
+  "schema": 2,
+  "permissions": [
+    "tools.invoke",
+    "chat.write_message",
+    "ui.svg",
+    "llm.complete",
+    "llm.image",
+    "llm.image.edit",
+    "host.upload",
+    "storage.read",
+    "storage.write"
+  ],
+  "host_capabilities": [
+    "aps.kv",
+    "aps.scope.user.read",
+    "aps.scope.user.write",
+    "llm.image",
+    "llm.image.edit",
+    "host.upload"
+  ],
+  "required_executas": [
+    {
+      "tool_id": "tool-qinghuasun-annavisual-brand-mvp-j6sdhjxy",
+      "min_version": "1.0.0",
+      "version": "latest"
+    }
+  ],
+  "optional_executas": [],
+  "system_prompt_addendum": "The user has the AnnaVisual Brand MVP app open. Use the Brand MVP tool for generating a draft Brand Profile, creating a brand-constrained visual brief, checking brand compliance, generating/editing host images when granted, and saving approved references. Logo and mascot should be treated as fixed brand assets unless the user explicitly chooses concept exploration.",
+  "user_message_prefix_template": "[AnnaVisual Brand MVP] {user_message}",
+  "tags": [
+    "brand",
+    "visual-generation",
+    "mvp",
+    "anna-app",
+    "executa"
+  ],
+  "ui": {
+    "bundle": {
+      "format": "static-spa",
+      "entry": "index.html",
+      "external_origins": []
+    },
+    "views": [
+      {
+        "name": "main",
+        "title": "AnnaVisual Brand MVP",
+        "default": true,
+        "entry": "index.html",
+        "min_size": {
+          "w": 560,
+          "h": 620
+        },
+        "default_size": {
+          "w": 1280,
+          "h": 860
+        },
+        "max_size": {
+          "w": 1600,
+          "h": 1100
+        },
+        "resizable": true,
+        "movable": true,
+        "single_instance": true,
+        "icon": "icon.svg"
+      }
+    ],
+    "host_api": {
+      "tools": [
+        "required:tool-qinghuasun-annavisual-brand-mvp-j6sdhjxy"
+      ],
+      "chat": [
+        "write_message"
+      ],
+      "artifact": [],
+      "llm": [
+        "complete"
+      ],
+      "fs": [],
+      "storage": [
+        "get",
+        "set",
+        "delete",
+        "list"
+      ],
+      "prefs": [],
+      "image": [
+        "generate",
+        "edit"
+      ],
+      "upload": [
+        "inline",
+        "negotiate",
+        "confirm"
+      ],
+      "window": [
+        "set_title"
+      ]
+    },
+    "csp_overrides": {
+      "img-src": [
+        "'self'",
+        "data:",
+        "blob:",
+        "https:"
+      ],
+      "font-src": [
+        "'self'",
+        "data:"
+      ],
+      "style-src": [
+        "'self'"
+      ],
+      "script-src": [
+        "'self'"
+      ],
+      "connect-src": [
+        "'self'"
+      ]
+    },
+    "state_merge": "last_writer_wins"
+  },
+  "dev": {
+    "fixtures": [
+      "fixtures/*.jsonl"
+    ],
+    "seed_storage": {},
+    "user_id": 1
+  }
+}
